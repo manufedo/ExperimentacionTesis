@@ -1,0 +1,8 @@
+# Ignorar todo por defecto
+*
+
+# Excepciones
+!.gitignore
+!*.csv
+!*.py
+!analisis.ipynb
