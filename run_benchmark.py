@@ -15,8 +15,8 @@ TIMEOUT_SECONDS = 30 * 60  # 30 minutes
 FSP_BENCHMARK_DIR = "/home/fedo/Desktop/Tesis/MTSADOS/mtsa/maven-root/mtsa/src/test/benchmarks/OTF-NonBlockingBenchmark/fsp"
 EXP_DIR = "/home/fedo/Desktop/Tesis/Experimentacion"
 CSV_FILE = os.path.join(EXP_DIR, f"resultados_experimentacion.csv")
-MAX_N = 4
-MAX_K = 4
+MAX_N = 15
+MAX_K = 15
 # ──────────────────────────────────────────────────────────────────────────────
 
 
@@ -31,7 +31,9 @@ ALGORITHMS = [
 ]
 
 PROBLEMS = [
-    "AT"
+    "AT",
+    "CM",
+    "BW"
 ]
 
 n_values = range(1,MAX_N + 1)
@@ -128,7 +130,7 @@ def run_experiment():
                     if ya_calculado:
                         print(f"Ya calculado para {n} {k} {algo} {p}")
                         continue
-                    print(f"Calculando para... {p}-{n}-{k} con {algo}")
+                    print(f"[{datetime.now().strftime('%H:%M:%S')}] Calculando para... {p}-{n}-{k} con {algo}")
                     status, metrics = run_case(p, n, k, algo)
                     new_row = {"problema": p, "n": n, "k": k, "algoritmo": algo, "status": status}
                     if metrics:
