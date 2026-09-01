@@ -11,6 +11,7 @@ from datetime import datetime
 # ── Configuration ──────────────────────────────────────────────────────────────
 JAVA = "/home/fedo/.jdks/openjdk-25.0.2/bin/java"
 MTSA_JAR = "/home/fedo/Desktop/Tesis/MTSADOS/mtsa/maven-root/mtsa/target/mtsa-1.0-SNAPSHOT.jar"
+GENERALIZED_CLI_CLASS = "MTSTools.ac.ic.doc.mtstools.model.operations.DCS.partialOrderReduction.generalization.handMadeBenchmarks.PORGeneralizedCLI"
 TIMEOUT_SECONDS = 30 * 60  # 30 minutes
 FSP_BENCHMARK_DIR = "/home/fedo/Desktop/Tesis/MTSADOS/mtsa/maven-root/mtsa/src/test/benchmarks/OTF-NonBlockingBenchmark/fsp"
 EXP_DIR = "/home/fedo/Desktop/Tesis/Experimentacion"
@@ -94,7 +95,28 @@ def run_case(problem, n, k, algorithm) -> dict:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=TIMEOUT_SECONDS)
         output = proc.stdout + proc.stderr
         if proc.returncode != 0 or "OutOfMemoryError" in output:
-              return "OM", None                                                                                                        
+              return "OM", None
+        return "OK", parse_output(output)
+    except subprocess.TimeoutExpired:
+        return "TO", None
+
+# Corre PORController pero sin calcular el isomorfismo con IsomorphismCalculator: arma los LTSs y los
+# grupos de isomorfismo directo con el generador a mano de cada problema (ver PORGeneralizedCLI), para
+# poder comparar el tiempo de síntesis sin que el cálculo del isomorfismo lo infle.
+def run_case_without_isomorphism(problem, n, k) -> dict:
+    cmd = [
+        JAVA, "-cp", MTSA_JAR,
+        "-Dfile.encoding=UTF-8",
+        "-Dsun.stdout.encoding=UTF-8",
+        "-Dsun.stderr.encoding=UTF-8",
+        GENERALIZED_CLI_CLASS, problem, str(n), str(k),
+    ]
+
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=TIMEOUT_SECONDS)
+        output = proc.stdout + proc.stderr
+        if proc.returncode != 0 or "OutOfMemoryError" in output:
+              return "OM", None
         return "OK", parse_output(output)
     except subprocess.TimeoutExpired:
         return "TO", None
@@ -113,6 +135,21 @@ def append_row(row: dict):
             writer.writeheader()
         writer.writerow(row)
 
+# Corre run_fn(p, n, k) y lo guarda en la tabla bajo el nombre de algoritmo "algo", salvo que ese caso
+# ya esté calculado (retomando desde el CSV).
+def run_and_record(rows, p, n, k, algo, run_fn):
+    ya_calculado = any(r["n"] == n and r["k"] == k and r["algoritmo"] == algo and r["problema"] == p for r in rows)
+    if ya_calculado:
+        print(f"Ya calculado para {n} {k} {algo} {p}")
+        return
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] Calculando para... {p}-{n}-{k} con {algo}")
+    status, metrics = run_fn(p, n, k)
+    new_row = {"problema": p, "n": n, "k": k, "algoritmo": algo, "status": status}
+    if metrics:
+        new_row.update(metrics)
+    rows.append(new_row)
+    append_row(new_row)
+
 def run_experiment():
     # Cargar resultados previos si existen
     if os.path.exists(CSV_FILE):
@@ -126,17 +163,13 @@ def run_experiment():
         for n in n_values:
             for k in k_values:
                 for algo in ALGORITHMS:
-                    ya_calculado = any(r["n"] == n and r["k"] == k and r["algoritmo"] == algo and r["problema"] == p for r in rows)
-                    if ya_calculado:
-                        print(f"Ya calculado para {n} {k} {algo} {p}")
-                        continue
-                    print(f"[{datetime.now().strftime('%H:%M:%S')}] Calculando para... {p}-{n}-{k} con {algo}")
-                    status, metrics = run_case(p, n, k, algo)
-                    new_row = {"problema": p, "n": n, "k": k, "algoritmo": algo, "status": status}
-                    if metrics:
-                        new_row.update(metrics)
-                    rows.append(new_row)
-                    append_row(new_row)
+                    run_and_record(rows, p, n, k, algo, lambda p, n, k, algo=algo: run_case(p, n, k, algo))
+
+                    # Además de PORController "normal", corro la misma síntesis pero sin calcular el
+                    # isomorfismo (usando el generador a mano de cada problema), para poder comparar
+                    # cuánto pesa ese cálculo por separado.
+                    if algo == "PORController":
+                        run_and_record(rows, p, n, k, "PORControllerGivenIsomorphisms", run_case_without_isomorphism)
 
     print("\n \nLISTO PAPU")
 
