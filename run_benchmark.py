@@ -145,6 +145,7 @@ def run_and_record(rows, p, n, k, algo, run_fn):
     print(f"[{datetime.now().strftime('%H:%M:%S')}] Calculando para... {p}-{n}-{k} con {algo}")
     status, metrics = run_fn(p, n, k)
     new_row = {"problema": p, "n": n, "k": k, "algoritmo": algo, "status": status}
+    print(f"Terminó con {status}")
     if metrics:
         new_row.update(metrics)
     rows.append(new_row)
