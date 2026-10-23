@@ -13,6 +13,9 @@ JAVA = "/home/fedo/.jdks/openjdk-25.0.2/bin/java"
 MTSA_JAR = "/home/fedo/Desktop/Tesis/MTSADOS/mtsa/maven-root/mtsa/target/mtsa-1.0-SNAPSHOT.jar"
 GENERALIZED_CLI_CLASS = "MTSTools.ac.ic.doc.mtstools.model.operations.DCS.partialOrderReduction.generalization.handMadeBenchmarks.PORGeneralizedCLI"
 TIMEOUT_SECONDS = 30 * 60  # 30 minutes
+# Heap máximo de la JVM. Por defecto es 1/4 de la RAM (~3.3 GB acá), y armar el director no compacto al final
+# de PORGeneralizedController se queda sin memoria en casos grandes aunque la síntesis ya haya terminado.
+JVM_MAX_HEAP = "-Xmx10g"
 FSP_BENCHMARK_DIR = "/home/fedo/Desktop/Tesis/MTSADOS/mtsa/maven-root/mtsa/src/test/benchmarks/OTF-NonBlockingBenchmark/fsp"
 EXP_DIR = "/home/fedo/Desktop/Tesis/Experimentacion"
 CSV_FILE = os.path.join(EXP_DIR, f"resultados_experimentacion.csv")
@@ -84,7 +87,7 @@ def case_file(problem, n, k):
 
 def run_case(problem, n, k, algorithm) -> dict:
     cmd = [
-        JAVA, "-cp", MTSA_JAR,
+        JAVA, JVM_MAX_HEAP, "-cp", MTSA_JAR,
         "-Dfile.encoding=UTF-8",
         "-Dsun.stdout.encoding=UTF-8",
         "-Dsun.stderr.encoding=UTF-8",
@@ -105,7 +108,7 @@ def run_case(problem, n, k, algorithm) -> dict:
 # poder comparar el tiempo de síntesis sin que el cálculo del isomorfismo lo infle.
 def run_case_without_isomorphism(problem, n, k) -> dict:
     cmd = [
-        JAVA, "-cp", MTSA_JAR,
+        JAVA, JVM_MAX_HEAP, "-cp", MTSA_JAR,
         "-Dfile.encoding=UTF-8",
         "-Dsun.stdout.encoding=UTF-8",
         "-Dsun.stderr.encoding=UTF-8",
@@ -135,12 +138,35 @@ def append_row(row: dict):
             writer.writeheader()
         writer.writerow(row)
 
+def terminó_ok(rows, p, n, k, algo):
+    return any(r["n"] == n and r["k"] == k and r["algoritmo"] == algo and r["problema"] == p
+               and r["status"] == "OK" for r in rows)
+
+# AT-n-k tiene solución sii k >= n (esa es la diagonal).
+def tiene_solucion_AT(n, k):
+    return k >= n
+
+# Devuelve el caso más chico que tiene que haber terminado con OK para que valga la pena correr (p, n, k),
+# o None si no hay ninguno (si ese caso no terminó, este tampoco lo va a hacer). En todos los problemas es
+# (n, k-1), pero en AT tiene que estar del mismo lado de la diagonal (con o sin solución): si (n, k-1) queda
+# del otro lado, se usa el anterior en la misma diagonal, (n-1, k-1).
+def caso_anterior(p, n, k):
+    if k == 1:
+        return None
+    if p == "AT" and tiene_solucion_AT(n, k - 1) != tiene_solucion_AT(n, k):
+        return (n - 1, k - 1) if n > 1 else None
+    return (n, k - 1)
+
 # Corre run_fn(p, n, k) y lo guarda en la tabla bajo el nombre de algoritmo "algo", salvo que ese caso
-# ya esté calculado (retomando desde el CSV).
+# ya esté calculado (retomando desde el CSV) o que su caso_anterior no haya terminado con OK.
 def run_and_record(rows, p, n, k, algo, run_fn):
     ya_calculado = any(r["n"] == n and r["k"] == k and r["algoritmo"] == algo and r["problema"] == p for r in rows)
     if ya_calculado:
         print(f"Ya calculado para {n} {k} {algo} {p}")
+        return
+    anterior = caso_anterior(p, n, k)
+    if anterior and not terminó_ok(rows, p, *anterior, algo):
+        print(f"Salteando {p}-{n}-{k} con {algo}: {p}-{anterior[0]}-{anterior[1]} no terminó con OK")
         return
     print(f"[{datetime.now().strftime('%H:%M:%S')}] Calculando para... {p}-{n}-{k} con {algo}")
     status, metrics = run_fn(p, n, k)
